@@ -11,6 +11,177 @@ import numpy as np
 from datetime import datetime, timedelta
 import ai_analysis
 
+# Professional Color Scheme
+NAVY_BLUE = colors.HexColor('#1a3a52')
+GOLD = colors.HexColor('#d4af37')
+LIGHT_GRAY = colors.HexColor('#f8f9fa')
+DARK_GRAY = colors.HexColor('#6c757d')
+ACCENT_BLUE = colors.HexColor('#2E86AB')
+SUCCESS_GREEN = colors.HexColor('#28a745')
+WARNING_YELLOW = colors.HexColor('#ffc107')
+from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+
+class NumberedCanvas(canvas.Canvas):
+    """Custom canvas for headers and footers"""
+    def __init__(self, *args, **kwargs):
+        canvas.Canvas.__init__(self, *args, **kwargs)
+        self._saved_page_states = []
+        self.ticker = kwargs.get('ticker', '')
+        self.company_name = kwargs.get('company_name', '')
+
+    def showPage(self):
+        self._saved_page_states.append(dict(self.__dict__))
+        self._startPage()
+
+    def save(self):
+        num_pages = len(self._saved_page_states)
+        for state in self._saved_page_states:
+            self.__dict__.update(state)
+            self.draw_page_decorations(num_pages)
+            canvas.Canvas.showPage(self)
+        canvas.Canvas.save(self)
+
+    def draw_page_decorations(self, page_count):
+        """Draw header and footer on each page"""
+        page_num = self._pageNumber
+        
+        # Skip header/footer on cover page (page 1)
+        if page_num == 1:
+            return
+            
+        # Header
+        self.saveState()
+        self.setStrokeColor(NAVY_BLUE)
+        self.setLineWidth(2)
+        self.line(0.5*inch, letter[1] - 0.4*inch, letter[0] - 0.5*inch, letter[1] - 0.4*inch)
+        
+        # Header text
+        self.setFont('Helvetica', 9)
+        self.setFillColor(DARK_GRAY)
+        self.drawString(0.5*inch, letter[1] - 0.35*inch, self.ticker)
+        self.drawCentredString(letter[0]/2, letter[1] - 0.35*inch, "Investment Analysis Report")
+        self.drawRightString(letter[0] - 0.5*inch, letter[1] - 0.35*inch, f"Page {page_num - 1} of {page_count - 1}")
+        
+        # Footer
+        self.setLineWidth(1)
+        self.line(0.5*inch, 0.5*inch, letter[0] - 0.5*inch, 0.5*inch)
+        
+        self.setFont('Helvetica', 7)
+        self.setFillColor(DARK_GRAY)
+        self.drawString(0.5*inch, 0.35*inch, f"Generated: {datetime.now().strftime('%B %d, %Y')}")
+        self.drawCentredString(letter[0]/2, 0.35*inch, "For informational purposes only. Not investment advice.")
+        
+        self.restoreState()
+
+def create_cover_page(story, report_data, styles):
+    """Creates a professional cover page"""
+    ticker = report_data['ticker']
+    company_name = report_data.get('company_name', ticker)
+    subtitle = report_data.get('subtitle', 'Investment Opportunity')
+    total_score = report_data.get('total_score', 0)
+    
+    # Determine recommendation
+    if total_score > 12:
+        recommendation = "BUY"
+        rec_color = SUCCESS_GREEN
+    elif total_score > 8:
+        recommendation = "HOLD"
+        rec_color = WARNING_YELLOW
+    else:
+        recommendation = "WATCH"
+        rec_color = DARK_GRAY
+    
+    # Spacer from top
+    story.append(Spacer(1, 1.5*inch))
+    
+    # Report Type
+    report_type_style = ParagraphStyle(
+        'ReportType',
+        parent=styles['Normal'],
+        fontSize=12,
+        textColor=DARK_GRAY,
+        alignment=TA_CENTER,
+        spaceAfter=20,
+        letterSpacing=2
+    )
+    story.append(Paragraph("EQUITY RESEARCH", report_type_style))
+    
+    # Decorative line
+    story.append(Spacer(1, 0.5*inch))
+    
+    # Company Name and Ticker Combined
+    company_style = ParagraphStyle(
+        'CompanyName',
+        parent=styles['Title'],
+        fontSize=32,
+        textColor=NAVY_BLUE,
+        alignment=TA_CENTER,
+        spaceAfter=20,
+        fontName='Helvetica-Bold',
+        leading=40
+    )
+    story.append(Paragraph(f"{company_name} ({ticker})", company_style))
+    
+    # Subtitle/Tagline (AI Summary)
+    subtitle_style = ParagraphStyle(
+        'Subtitle',
+        parent=styles['Normal'],
+        fontSize=16,
+        textColor=ACCENT_BLUE,
+        alignment=TA_CENTER,
+        spaceAfter=40,
+        fontName='Helvetica-Oblique',
+        leading=20
+    )
+    story.append(Paragraph(subtitle, subtitle_style))
+    
+    # Recommendation Badge
+    badge_data = [[recommendation]]
+    badge_table = Table(badge_data, colWidths=[2.5*inch])
+    badge_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), rec_color),
+        ('TEXTCOLOR', (0, 0), (-1, -1), colors.white),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 28),
+        ('TOPPADDING', (0, 0), (-1, -1), 15),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 15),
+        ('ROUNDEDCORNERS', [10, 10, 10, 10])
+    ]))
+    story.append(badge_table)
+    
+    story.append(Spacer(1, 0.5*inch))
+    
+    # Key Metrics Box
+    price = report_data['price_data']['Current_Price']
+    smart_money = report_data.get('smart_money_score', 0)
+    
+    metrics_data = [
+        ["Current Price", f"${price:.2f}"],
+        ["Smart Money Score", f"{smart_money}/10"],
+        ["Report Date", datetime.now().strftime('%B %d, %Y')]
+    ]
+    
+    metrics_table = Table(metrics_data, colWidths=[2*inch, 2*inch])
+    metrics_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), LIGHT_GRAY),
+        ('TEXTCOLOR', (0, 0), (-1, -1), NAVY_BLUE),
+        ('ALIGN', (0, 0), (0, -1), 'RIGHT'),
+        ('ALIGN', (1, 0), (1, -1), 'LEFT'),
+        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+        ('FONTNAME', (1, 0), (1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 0), (-1, -1), 11),
+        ('TOPPADDING', (0, 0), (-1, -1), 8),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ('LEFTPADDING', (0, 0), (-1, -1), 15),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 15),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#dee2e6'))
+    ]))
+    story.append(metrics_table)
+    
+    # Page break after cover
+    story.append(PageBreak())
+
 def generate_charts(ticker, price_history, insider_data, ai_prediction=None):
     """
     Generates professional charts for the report.
@@ -185,12 +356,21 @@ def create_pdf_report(filename, report_data, charts):
     """
     Generates a professional PDF report with enhanced design.
     """
-    doc = SimpleDocTemplate(filename, pagesize=letter,
-                           topMargin=0.5*inch, bottomMargin=0.5*inch)
+    # Custom document template with headers/footers
+    doc = SimpleDocTemplate(
+        filename, 
+        pagesize=letter,
+        topMargin=0.75*inch, 
+        bottomMargin=0.75*inch,
+        leftMargin=0.5*inch,
+        rightMargin=0.5*inch
+    )
+    
     styles = getSampleStyleSheet()
     story = []
     
     ticker = report_data['ticker']
+    company_name = report_data.get('company_name', ticker)
     price_data = report_data['price_data']
     superinvestor = report_data['superinvestor']
     insider = report_data['insider']
@@ -198,135 +378,183 @@ def create_pdf_report(filename, report_data, charts):
     news_items = report_data.get('news', [])
     total_score = report_data.get('total_score', 0)
     
-    # Custom Styles
+    # Create cover page first - REMOVED per user request
+    # create_cover_page(story, report_data, styles)
+    
+    # Custom Styles with Professional Colors
     title_style = ParagraphStyle(
         'CustomTitle',
         parent=styles['Title'],
-        fontSize=28,
-        textColor=colors.HexColor('#1A1A2E'),
+        fontSize=32,
+        textColor=NAVY_BLUE,
         spaceAfter=30,
-        alignment=1  # Center
+        alignment=1,  # Center
+        fontName='Helvetica-Bold'
     )
     
     heading_style = ParagraphStyle(
         'CustomHeading',
         parent=styles['Heading1'],
-        fontSize=16,
-        textColor=colors.HexColor('#2E86AB'),
+        fontSize=18,
+        textColor=NAVY_BLUE,
         spaceBefore=20,
         spaceAfter=12,
-        borderWidth=2,
-        borderColor=colors.HexColor('#2E86AB'),
-        borderPadding=5
+        fontName='Helvetica-Bold'
     )
     
     subheading_style = ParagraphStyle(
         'CustomSubHeading',
         parent=styles['Heading2'],
-        fontSize=13,
-        textColor=colors.HexColor('#06A77D'),
+        fontSize=14,
+        textColor=ACCENT_BLUE,
         spaceBefore=10,
-        spaceAfter=8
+        spaceAfter=8,
+        fontName='Helvetica-Bold'
     )
     
     body_style = ParagraphStyle(
         'CustomBody',
         parent=styles['Normal'],
         fontSize=11,
-        textColor=colors.HexColor('#1A1A2E'),
+        textColor=colors.HexColor('#333333'),
         spaceBefore=6,
         spaceAfter=6
     )
     
-    # Title with Company Name and Ticker
-    company_name = report_data.get('analysis_data', {}).get('Name', report_data['ticker'])
-    title = Paragraph(f"Investment Thesis: {company_name} ({report_data['ticker']})", title_style)
-    story.append(title)
-    story.append(Spacer(1, 10))
+    # Report Header
+    report_type_style = ParagraphStyle(
+        'ReportType',
+        parent=styles['Normal'],
+        fontSize=12,
+        textColor=DARK_GRAY,
+        alignment=TA_CENTER,
+        spaceAfter=20,
+        letterSpacing=2
+    )
+    story.append(Paragraph("EQUITY RESEARCH", report_type_style))
     
-    # Executive Summary Box
-    story.append(Paragraph("Executive Summary", heading_style))
+    # Company Name and Ticker Combined
+    company_name = report_data.get('company_name', ticker)
+    company_style = ParagraphStyle(
+        'CompanyName',
+        parent=styles['Title'],
+        fontSize=32,
+        textColor=NAVY_BLUE,
+        alignment=TA_CENTER,
+        spaceAfter=20,
+        fontName='Helvetica-Bold',
+        leading=40
+    )
+    story.append(Paragraph(f"{company_name} ({ticker})", company_style))
+    
+    # Subtitle/Tagline (AI Summary)
+    subtitle = report_data.get('subtitle', 'Value Investment Opportunity')
+    subtitle_style = ParagraphStyle(
+        'Subtitle',
+        parent=styles['Normal'],
+        fontSize=16,
+        textColor=ACCENT_BLUE,
+        alignment=TA_CENTER,
+        spaceAfter=40,
+        fontName='Helvetica-Oblique',
+        leading=20
+    )
+    story.append(Paragraph(subtitle, subtitle_style))
+    
+    # Executive Summary Box (Enhanced)
+    story.append(Paragraph("1. Executive Summary", heading_style))
     
     # Use format_billions for Market Cap
     mc = report_data['price_data'].get('Market_Cap')
     mc_str = format_billions(mc)
     
-    # Calculate P/E and P/S if available
-    price = report_data['price_data']['Current_Price']
-    # We need earnings/sales for P/E and P/S. 
-    # For now, let's stick to what we have or use placeholders if missing
-    
+    # Calculate Down from High %
+    down_from_high = "N/A"
+    high_val = "N/A"
+    if report_data['price_data'].get('52_Week_High') and report_data['price_data']['52_Week_High'] != 'N/A':
+        high = float(report_data['price_data']['52_Week_High'])
+        current = float(report_data['price_data']['Current_Price'])
+        pct_down = ((high - current) / high) * 100
+        down_from_high = f"{pct_down:.1f}%"
+        high_val = f"${high:.2f}"
+        
+    # Enhanced Executive Summary with professional styling
     summary_data = [
-        ["Current Price", f"${price}"],
-        ["52-Week Range", f"${report_data['price_data']['52_Week_Low']} - ${report_data['price_data'].get('52_Week_High', 'N/A')}"],
-        ["Market Cap", mc_str],
-        ["Smart Money Score", f"{report_data['smart_money_score']}/10"]
+        ["Metric", "Value", "Metric", "Value"],
+        ["Current Price", f"${report_data['price_data']['Current_Price']:.2f}", "52-Week High", high_val],
+        ["Market Cap", mc_str, "Drop from High", down_from_high],
+        ["Smart Money Score", f"{report_data['smart_money_score']}/10", "Total Score", f"{total_score:.1f}/20"]
     ]
+    
+    summary_table = Table(summary_data, colWidths=[2*inch, 1.5*inch, 2*inch, 1.5*inch])
+    summary_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), NAVY_BLUE),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTNAME', (0, 1), (0, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 11),
+        ('FONTSIZE', (0, 1), (-1, -1), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 10),
+        ('TOPPADDING', (0, 1), (-1, -1), 8),
+        ('BOTTOMPADDING', (0, 1), (-1, -1), 8),
+        ('BACKGROUND', (0, 1), (-1, -1), LIGHT_GRAY),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#dee2e6')),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, LIGHT_GRAY])
+    ]))
+    story.append(summary_table)
+    story.append(Spacer(1, 15))
     
     summary_text = f"""
     <b>Investment Recommendation:</b> {'BUY' if total_score > 12 else 'HOLD' if total_score > 8 else 'WATCH'}<br/>
-    <b>Probability Score:</b> {total_score:.1f} / 20<br/>
-    <b>Current Price:</b> ${report_data['price_data']['Current_Price']}<br/>
-    <b>52-Week Low:</b> ${report_data['price_data']['52_Week_Low']} (+{report_data['price_data']['Above_Low_Pct']}%)<br/>
-    <b>Market Cap:</b> {mc_str} <br/>
-    <br/>
-    <b>Key Thesis:</b> {report_data['ticker']} is trading near its 52-week low, presenting a potential value opportunity. 
-    {'Strong' if total_score > 12 else 'Moderate' if total_score > 8 else 'Weak'} insider buying activity 
+    <b>Key Thesis:</b> {report_data['ticker']} is trading {down_from_high} below its 52-week high. 
+    {'Strong' if total_score > 12 else 'Moderate' if total_score > 8 else 'Weak'} insider/superinvestor activity 
     and {'positive' if ai_data.get('management', {}).get('score', 0) > 6 else 'mixed'} management quality 
     signals suggest {'compelling' if total_score > 12 else 'reasonable' if total_score > 8 else 'limited'} 
-    upside potential over the next 2-3 years.
+    upside potential.
     """
     
-    summary_table = Table([[Paragraph(summary_text, styles['Normal'])]], colWidths=[6.5*inch])
-    summary_table.setStyle(TableStyle([
+    summary_table_text = Table([[Paragraph(summary_text, styles['Normal'])]], colWidths=[6.5*inch])
+    summary_table_text.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#F0F4F8')),
         ('BOX', (0, 0), (-1, -1), 2, colors.HexColor('#2E86AB')),
         ('PADDING', (0, 0), (-1, -1), 15),
     ]))
-    story.append(summary_table)
+    story.append(summary_table_text)
     story.append(Spacer(1, 20))
     
-    # 1. Valuation Metrics
-    story.append(Paragraph("1. Valuation Metrics", heading_style))
+    # Page Break
+    story.append(PageBreak())
     
-    val_data = [
-        ["Metric", "Value"],
-        ["Current Price", f"${report_data['price_data']['Current_Price']}"],
-        ["52-Week Low", f"${report_data['price_data']['52_Week_Low']}"],
-        ["Premium over Low", f"{report_data['price_data']['Above_Low_Pct']}%"],
-        ["Market Cap", mc_str],
-        ["Free Cash Flow", format_billions(report_data['price_data'].get('FCF'))],
-        ["Debt/Equity Ratio", f"{report_data['price_data'].get('Debt_Equity', 0):.2f}" if report_data['price_data'].get('Debt_Equity') is not None else 'N/A']
+    # 2. Valuation Metrics
+    story.append(Paragraph("2. Valuation Metrics", heading_style))
+    
+    # Key Valuation Metrics Table
+    story.append(Paragraph("Key Valuation Metrics", subheading_style))
+    metrics = report_data.get('financial_metrics', {})
+    
+    val_metrics_data = [
+        ["Metric", "Value", "Metric", "Value"],
+        ["P/E Ratio", f"{metrics.get('PERatio', 'N/A')}", "Forward P/E", f"{metrics.get('forwardPE', 'N/A')}"],
+        ["PEG Ratio", f"{metrics.get('PEGRatio', 'N/A')}", "Price/Sales", f"{metrics.get('PriceToSalesRatioTTM', 'N/A')}"],
+        ["Price/Book", f"{metrics.get('PriceToBookRatio', 'N/A')}", "EV/EBITDA", f"{metrics.get('EVToEBITDA', 'N/A')}"],
+        ["Dividend Yield", f"{metrics.get('DividendYield', 'N/A')}", "Beta", f"{metrics.get('Beta', 'N/A')}"]
     ]
     
-    # Add additional financial metrics if available from report_data
-    financial_data = report_data.get('financial_metrics', {})
-    if financial_data:
-        if financial_data.get('pe_ratio'):
-            val_data.append(["P/E Ratio", f"{financial_data['pe_ratio']:.2f}"])
-        if financial_data.get('pb_ratio'):
-            val_data.append(["P/B Ratio", f"{financial_data['pb_ratio']:.2f}"])
-        if financial_data.get('dividend_yield'):
-            val_data.append(["Dividend Yield", f"{financial_data['dividend_yield']:.2f}%"])
-        if financial_data.get('roe'):
-            val_data.append(["ROE", f"{financial_data['roe']:.2f}%"])
-        if financial_data.get('profit_margin'):
-            val_data.append(["Profit Margin", f"{financial_data['profit_margin']:.2f}%"])
-    
-    t = Table(val_data, colWidths=[3*inch, 3*inch])
-    t.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2E86AB')),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+    val_metrics_table = Table(val_metrics_data, colWidths=[2*inch, 1.5*inch, 2*inch, 1.5*inch])
+    val_metrics_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), NAVY_BLUE),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 12),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-        ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#F8F9FA')),
-        ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#DEE2E6')),
-        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F8F9FA')])
+        ('FONTSIZE', (0, 0), (-1, 0), 11),
+        ('FONTSIZE', (0, 1), (-1, -1), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 10),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#dee2e6')),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, LIGHT_GRAY])
     ]))
-    story.append(t)
-    story.append(Spacer(1, 15))
+    story.append(val_metrics_table)
+    story.append(Spacer(1, 20))
     
     # 5-Year Price Chart
     if 'price_chart' in charts:
@@ -338,46 +566,42 @@ def create_pdf_report(filename, report_data, charts):
         story.append(Image(charts['pe_chart'], width=6*inch, height=3*inch))
         story.append(Spacer(1, 20))
     
-    # 5. Analyst Price Target
-    story.append(Paragraph("5. Analyst Price Target", heading_style))
-    
-    target = report_data['financial_metrics'].get('targetMeanPrice')
-    current = report_data['price_data']['Current_Price']
-    
-    if target:
-        upside = (target - current) / current * 100
-        color = 'green' if upside > 0 else 'red'
-        text = f"""
-        <b>Current Price:</b> ${current:.2f}<br/>
-        <b>Mean Analyst Target:</b> ${target:.2f}<br/>
-        <b>Implied Upside:</b> <font color='{color}'>{upside:+.1f}%</font>
-        """
-        story.append(Paragraph(text, body_style))
-    else:
-        story.append(Paragraph("Insufficient analyst data to predict price target.", body_style))
-        
-    story.append(Spacer(1, 12))
-    
     # Page Break
     story.append(PageBreak())
     
-    # 2. Smart Money Analysis
-    story.append(Paragraph("2. Smart Money Analysis", heading_style))
+    # 3. Smart Money Analysis
+    story.append(Paragraph("3. Smart Money Analysis", heading_style))
     
     si = report_data.get('superinvestor', {})
     ins = report_data.get('insider', {})
     
+    # Superinvestor details
+    buyers_list = si.get('buyers', [])
+    sellers_list = si.get('sellers', [])
+    
+    if buyers_list:
+        buyers_text = ", ".join(buyers_list)
+    else:
+        buyers_text = "None"
+    
+    if sellers_list:
+        sellers_text = ", ".join(sellers_list)
+    else:
+        sellers_text = "None"
+    
     sm_data = [
         ["Category", "Activity", "Details"],
         ["Superinvestors", f"Buys: {si.get('buys', 0)} | Sells: {si.get('sells', 0)}", 
-         f"Buyers: {', '.join(si.get('buyers', [])[:3]) if si.get('buyers') else 'None'}"],
+         f"Total Activity: {si.get('total_activity', 0)}"],
+        ["Buyers", "", buyers_text],
+        ["Sellers", "", sellers_text],
         ["Insiders", f"Buys: {ins.get('buys', 0)} | Sells: {ins.get('sells', 0)}", 
          f"Net Value: ${ins.get('net_value', 0):,.0f}"]
     ]
     
     t2 = Table(sm_data, colWidths=[1.5*inch, 2*inch, 3.5*inch])
     t2.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2E86AB')),
+        ('BACKGROUND', (0, 0), (-1, 0), NAVY_BLUE),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
         ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
@@ -389,23 +613,30 @@ def create_pdf_report(filename, report_data, charts):
     story.append(t2)
     story.append(Spacer(1, 20))
     
-    # 3. Quarterly Financials (Last 8 Quarters)
-    story.append(Paragraph("3. Quarterly Financials (Last 8 Quarters)", heading_style))
+    # 4. Income Statement Analysis
+    story.append(Paragraph("4. Income Statement Analysis", heading_style))
     
     q_financials = report_data.get('quarterly_financials', [])
     if q_financials:
         q_data = [["Quarter Ending", "Revenue ($M)", "Net Income ($M)", "EPS ($)"]]
         for q in q_financials:
+            eps_value = q.get('reportedEPS')
+            # Display actual EPS value (including zero and negatives), only show N/A if truly missing
+            if eps_value is not None:
+                eps_display = f"{eps_value:.2f}"
+            else:
+                eps_display = "N/A"
+            
             q_data.append([
                 q['fiscalDateEnding'],
                 format_billions(q['totalRevenue']).replace('$', ''), # Remove $ since header has ($B)
                 format_billions(q['netIncome']).replace('$', ''),
-                f"{q['reportedEPS']:.2f}"
+                eps_display
             ])
             
         t3 = Table(q_data, colWidths=[1.8*inch, 1.8*inch, 1.8*inch, 1.6*inch])
         t3.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2E86AB')),
+            ('BACKGROUND', (0, 0), (-1, 0), NAVY_BLUE),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
@@ -417,31 +648,204 @@ def create_pdf_report(filename, report_data, charts):
         story.append(t3)
     else:
         story.append(Paragraph("Quarterly financial data not available.", styles['Normal']))
+    
+    # AI Analysis for Income Statement
+    story.append(Spacer(1, 10))
+    story.append(Paragraph("Income Statement Summary", subheading_style))
+    is_summary = ai_data.get('financial_statement_analysis', 'Analysis not available.')
+    story.append(Paragraph(is_summary, styles['Normal']))
         
     story.append(Spacer(1, 20))
 
-    # 4. AI Analysis & Business Outlook
-    story.append(Paragraph("4. AI Analysis & Business Outlook", heading_style))
+    # 5. Balance Sheet Analysis
+    story.append(Paragraph("5. Balance Sheet Analysis", heading_style))
     
-    # Management
-    story.append(Paragraph("<b>Management Quality:</b>", styles['Normal']))
-    story.append(Paragraph(ai_data.get('management', {}).get('analysis', 'N/A'), styles['Normal']))
-    story.append(Spacer(1, 10))
+    # Balance Sheet Data
+    balance_sheet = report_data.get('balance_sheet_data', {})
+    if balance_sheet:
+        # Summary Table - Key Financial Position Metrics
+        story.append(Paragraph("Financial Position Summary", subheading_style))
+        
+        # Calculate derived metrics
+        total_assets = balance_sheet.get('Total Assets', 0)
+        total_liabilities = balance_sheet.get('Total Liabilities', 0)
+        total_equity = balance_sheet.get('Total Equity', 0)
+        cash = balance_sheet.get('Cash And Cash Equivalents', 0)
+        total_debt = balance_sheet.get('Total Debt', 0)
+        working_capital = balance_sheet.get('Working Capital', 0)
+        
+        # Net Debt = Total Debt - Cash
+        net_debt = total_debt - cash
+        
+        # Debt-to-Equity Ratio
+        debt_to_equity = (total_debt / total_equity) if total_equity != 0 else 0
+        
+        # Equity Ratio = Total Equity / Total Assets
+        equity_ratio = (total_equity / total_assets * 100) if total_assets != 0 else 0
+        
+        summary_data = [
+            ["Metric", "Value ($B)", "Metric", "Value"],
+            ["Total Assets", format_billions(total_assets).replace('$', ''), "Total Equity", format_billions(total_equity).replace('$', '')],
+            ["Total Liabilities", format_billions(total_liabilities).replace('$', ''), "Equity Ratio", f"{equity_ratio:.1f}%"],
+            ["Cash & Equivalents", format_billions(cash).replace('$', ''), "Total Debt", format_billions(total_debt).replace('$', '')],
+            ["Net Debt Position", format_billions(net_debt).replace('$', ''), "Debt-to-Equity", f"{debt_to_equity:.2f}"],
+            ["Working Capital", format_billions(working_capital).replace('$', ''), "Date", balance_sheet.get('Date', 'N/A')]
+        ]
+        
+        summary_table = Table(summary_data, colWidths=[2.2*inch, 1.3*inch, 2.2*inch, 1.3*inch])
+        summary_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), NAVY_BLUE),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('ALIGN', (1, 1), (1, -1), 'RIGHT'),
+            ('ALIGN', (3, 1), (3, -1), 'RIGHT'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTNAME', (0, 1), (0, -1), 'Helvetica-Bold'),
+            ('FONTNAME', (2, 1), (2, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 10),
+            ('FONTSIZE', (0, 1), (-1, -1), 9),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+            ('TOPPADDING', (0, 1), (-1, -1), 6),
+            ('BOTTOMPADDING', (0, 1), (-1, -1), 6),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, LIGHT_GRAY])
+        ]))
+        story.append(summary_table)
+        story.append(Spacer(1, 15))
+        
+        # Key Insights Box
+        net_debt_status = "Net Cash Position" if net_debt < 0 else "Net Debt Position"
+        leverage_status = "Low" if debt_to_equity < 0.5 else "Moderate" if debt_to_equity < 1.5 else "High"
+        
+        insights_text = f"""
+        <b>Cash & Debt Position:</b> {net_debt_status} of {format_billions(abs(net_debt))}. 
+        The company maintains a <b>{leverage_status}</b> leverage profile with a debt-to-equity ratio of {debt_to_equity:.2f}.<br/>
+        <b>Capital Structure:</b> Equity represents {equity_ratio:.1f}% of total assets, 
+        with working capital of {format_billions(working_capital)}.
+        """
+        
+        insights_table = Table([[Paragraph(insights_text, styles['Normal'])]], colWidths=[6.5*inch])
+        insights_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#F0F4F8')),
+            ('BOX', (0, 0), (-1, -1), 1, ACCENT_BLUE),
+            ('PADDING', (0, 0), (-1, -1), 12),
+        ]))
+        story.append(insights_table)
+        story.append(Spacer(1, 12))
     
-    # Sustainability
-    story.append(Paragraph("<b>Business Sustainability:</b>", styles['Normal']))
-    story.append(Paragraph(ai_data.get('sustainability', {}).get('analysis', 'N/A'), styles['Normal']))
-    story.append(Spacer(1, 10))
+    # AI Analysis of Balance Sheet
+    story.append(Paragraph("Balance Sheet Quality Assessment", subheading_style))
+    bs_summary = ai_data.get('balance_sheet_analysis', 'Analysis not available.')
+    story.append(Paragraph(bs_summary, styles['Normal']))
     
-    # Business Outlook
-    story.append(Paragraph("<b>Business Outlook & Durability:</b>", styles['Normal']))
-    story.append(Paragraph(ai_data.get('outlook', 'N/A'), styles['Normal']))
+    story.append(Spacer(1, 20))
+
+    # 6. Cash Flow Analysis
+    story.append(Paragraph("6. Cash Flow Analysis", heading_style))
+    
+    # Cash Flow Data
+    cash_flow = report_data.get('cash_flow_data', {})
+    if cash_flow:
+        # Summary Table - Key Cash Flow Metrics
+        story.append(Paragraph("Cash Flow Summary", subheading_style))
+        
+        # Extract values
+        operating_cf = cash_flow.get('Operating Cash Flow', 0)
+        investing_cf = cash_flow.get('Investing Cash Flow', 0)
+        financing_cf = cash_flow.get('Financing Cash Flow', 0)
+        capex = cash_flow.get('Capital Expenditure', cash_flow.get('Capital Expenditures', 0))
+        free_cf = cash_flow.get('Free Cash Flow', 0)
+        dividends = cash_flow.get('Dividends Paid', 0)
+        
+        # Calculate FCF if not provided
+        if free_cf == 0 and operating_cf != 0:
+            free_cf = operating_cf - abs(capex)
+        
+        # Calculate FCF Margin (FCF / Operating CF)
+        fcf_margin = (free_cf / operating_cf * 100) if operating_cf != 0 else 0
+        
+        summary_data = [
+            ["Metric", "Value ($B)", "Metric", "Value ($B)"],
+            ["Operating Cash Flow", format_billions(operating_cf).replace('$', ''), "Free Cash Flow", format_billions(free_cf).replace('$', '')],
+            ["Investing Cash Flow", format_billions(investing_cf).replace('$', ''), "FCF Margin", f"{fcf_margin:.1f}%"],
+            ["Financing Cash Flow", format_billions(financing_cf).replace('$', ''), "Capital Expenditures", format_billions(abs(capex)).replace('$', '')],
+            ["Dividends Paid", format_billions(abs(dividends)).replace('$', ''), "Date", cash_flow.get('Date', 'N/A')]
+        ]
+        
+        summary_table = Table(summary_data, colWidths=[2.2*inch, 1.3*inch, 2.2*inch, 1.3*inch])
+        summary_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), NAVY_BLUE),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('ALIGN', (1, 1), (1, -1), 'RIGHT'),
+            ('ALIGN', (3, 1), (3, -1), 'RIGHT'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTNAME', (0, 1), (0, -1), 'Helvetica-Bold'),
+            ('FONTNAME', (2, 1), (2, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 10),
+            ('FONTSIZE', (0, 1), (-1, -1), 9),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+            ('TOPPADDING', (0, 1), (-1, -1), 6),
+            ('BOTTOMPADDING', (0, 1), (-1, -1), 6),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, LIGHT_GRAY])
+        ]))
+        story.append(summary_table)
+        story.append(Spacer(1, 15))
+        
+        # Key Insights Box
+        fcf_status = "Positive" if free_cf > 0 else "Negative"
+        fcf_color = "green" if free_cf > 0 else "red"
+        cash_generation = "Strong" if fcf_margin > 20 else "Moderate" if fcf_margin > 10 else "Weak"
+        
+        insights_text = f"""
+        <b>Free Cash Flow:</b> <font color='{fcf_color}'>{fcf_status} FCF of {format_billions(abs(free_cf))}</font> 
+        representing a {cash_generation.lower()} cash generation profile with {fcf_margin:.1f}% FCF margin.<br/>
+        <b>Capital Allocation:</b> Operating activities generated {format_billions(operating_cf)}, 
+        with {format_billions(abs(capex))} invested in capital expenditures 
+        and {format_billions(abs(dividends))} returned to shareholders via dividends.
+        """
+        
+        insights_table = Table([[Paragraph(insights_text, styles['Normal'])]], colWidths=[6.5*inch])
+        insights_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#F0F4F8')),
+            ('BOX', (0, 0), (-1, -1), 1, ACCENT_BLUE),
+            ('PADDING', (0, 0), (-1, -1), 12),
+        ]))
+        story.append(insights_table)
+        story.append(Spacer(1, 12))
+    
+    # AI Analysis of Cash Flow
+    story.append(Paragraph("Cash Flow Quality Assessment", subheading_style))
+    cf_summary = ai_data.get('cash_flow_analysis', 'Analysis not available.')
+    story.append(Paragraph(cf_summary, styles['Normal']))
     
     story.append(Spacer(1, 20))
     
-    # 5. AI Price Prediction
-    story.append(Paragraph("5. AI-Powered 5-Year Price Forecast", heading_style))
+    # 7. Analyst and AI-Powered 5-Year Price Forecasts
+    story.append(Paragraph("7. Analyst and AI-Powered 5-Year Price Forecasts", heading_style))
     
+    # Analyst Forecasts
+    metrics = report_data.get('financial_metrics', {})
+    target_price = metrics.get('targetMeanPrice')
+    current_price = report_data.get('price_data', {}).get('Current_Price')
+    
+    if target_price and current_price:
+        upside_pct = ((target_price - current_price) / current_price) * 100
+        upside_str = f"+{upside_pct:.1f}%" if upside_pct > 0 else f"{upside_pct:.1f}%"
+        color = "green" if upside_pct > 0 else "red"
+        
+        analyst_text = f"""
+        <b>Analyst Consensus Target:</b> ${target_price:.2f} 
+        (Implied Upside: <font color='{color}'>{upside_str}</font>)
+        """
+        story.append(Paragraph(analyst_text, styles['Normal']))
+        story.append(Spacer(1, 12))
+    else:
+        story.append(Paragraph("Analyst consensus target unavailable.", styles['Normal']))
+        story.append(Spacer(1, 12))
+    
+    # AI Prediction Chart
     if 'prediction_chart' in charts:
         story.append(Image(charts['prediction_chart'], width=6*inch, height=3*inch))
         story.append(Spacer(1, 10))
@@ -458,57 +862,32 @@ def create_pdf_report(filename, report_data, charts):
     
     story.append(Spacer(1, 20))
     
-    # 5. Smart Money Activity
-    story.append(Paragraph("5. Smart Money Activity", heading_style))
-    
-    # Superinvestor
-    story.append(Paragraph("Superinvestor Activity (Dataroma)", subheading_style))
-    
-    si_data = report_data['superinvestor']
-    if si_data.get('has_superinvestor_addition'):
-        names = ", ".join(si_data.get('buyers', []))
-        if not names:
-            names = "Multiple Funds"
-        story.append(Paragraph(f"Recent Buys by: <b>{names}</b>", body_style))
-    else:
-        story.append(Paragraph("No recent superinvestor additions found.", body_style))
-    
-    story.append(Spacer(1, 10))
-    
-    # Insider
-    story.append(Paragraph("Insider Trading (OpenInsider)", subheading_style))
-    if insider:
-        ins_text = f"<b>Buys:</b> {insider['buys']} | <b>Sells:</b> {insider['sells']} | <b>Net Value:</b> ${insider['net_value']:,.0f}"
-        story.append(Paragraph(ins_text, styles['Normal']))
-        
-        signal_color = '#06A77D' if insider['net_value'] > 0 else '#D62828'
-        signal_text = "Insiders are buying (Bullish)" if insider['net_value'] > 0 else "Insiders are selling"
-        story.append(Paragraph(f"<font color='{signal_color}'><b>Signal:</b> {signal_text}</font>", styles['Normal']))
-        
-        story.append(Spacer(1, 10))
-        if 'insider_chart' in charts:
-            story.append(Image(charts['insider_chart'], width=4*inch, height=2.5*inch))
-    else:
-        story.append(Paragraph("No insider data available.", styles['Normal']))
+    # Page Break
+    story.append(PageBreak())
     
     story.append(Spacer(1, 20))
     
-    # 4. AI Qualitative Analysis
-    story.append(Paragraph("4. AI Qualitative Analysis", heading_style))
+    # 8. AI Analysis & Business Outlook
+    story.append(Paragraph("8. AI Analysis & Business Outlook", heading_style))
     
     mgmt = ai_data.get('management', {})
     story.append(Paragraph(f"<b>Management Quality:</b> {mgmt.get('score', 'N/A')}/10", subheading_style))
     story.append(Paragraph(f"{mgmt.get('analysis', 'Analysis unavailable')}", styles['Normal']))
-    story.append(Spacer(1, 8))
+    story.append(Spacer(1, 12))
     
     sust = ai_data.get('sustainability', {})
     story.append(Paragraph(f"<b>Business Sustainability:</b> {sust.get('score', 'N/A')}/10", subheading_style))
     story.append(Paragraph(f"{sust.get('analysis', 'Analysis unavailable')}", styles['Normal']))
+    story.append(Spacer(1, 12))
+    
+    # Business Outlook
+    story.append(Paragraph("<b>Business Outlook & Durability</b>", subheading_style))
+    story.append(Paragraph(ai_data.get('outlook', 'Analysis unavailable'), styles['Normal']))
     
     story.append(Spacer(1, 20))
     
-    # 6. Five Key Investment Reasons
-    story.append(Paragraph("6. Five Key Investment Reasons", heading_style))
+    # 9. Five Key Investment Reasons
+    story.append(Paragraph("9. Five Key Investment Reasons", heading_style))
     
     # Generate investment reasons based on data
     reasons = []
@@ -567,13 +946,7 @@ def create_pdf_report(filename, report_data, charts):
     
     story.append(Spacer(1, 20))
     
-    if news_items:
-        for item in news_items[:5]:
-            title = item['title'].replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-            story.append(Paragraph(f"• <a href='{item['link']}' color='blue'>{title}</a>", styles['Normal']))
-            story.append(Spacer(1, 4))
-    else:
-        story.append(Paragraph("No recent news found.", styles['Normal']))
+    story.append(Spacer(1, 20))
     
     story.append(Spacer(1, 20))
     
@@ -594,8 +967,13 @@ def create_pdf_report(filename, report_data, charts):
     
     story.append(Paragraph(rec_text, styles['Normal']))
     
-    # Build PDF
-    doc.build(story)
+    # Build PDF with custom canvas for headers/footers
+    def create_canvas(*args, **kwargs):
+        kwargs['ticker'] = ticker
+        kwargs['company_name'] = company_name
+        return NumberedCanvas(*args, **kwargs)
+    
+    doc.build(story, canvasmaker=create_canvas)
     print(f"Professional PDF Report generated: {filename}")
 
 def generate_report(stock_data, news_items, filename="investment_thesis.md"):

@@ -51,63 +51,161 @@ def get_news(ticker):
         print(f"Error fetching news for {ticker}: {e}")
         return []
 
+import yfinance as yf
+
 def get_company_info(ticker):
     """
-    Fetches company info using Alpha Vantage.
-    Much more reliable than Yahoo Finance.
+    Fetches company info using Alpha Vantage and Yahoo Finance.
+    Merges data to get the most comprehensive metrics.
+    """
+    info = {
+        'summary': 'No summary available.',
+        'sector': 'Unknown',
+        'industry': 'Unknown',
+        'marketCap': None,
+        'forwardPE': None,
+        'targetMeanPrice': None,
+        'recommendationKey': 'Unknown',
+        'name': ticker,
+        'exchange': 'Unknown',
+        'currency': 'USD',
+        'country': 'Unknown',
+        '52WeekHigh': None,
+        '52WeekLow': None,
+        # Valuation Metrics
+        'PERatio': None,
+        'PriceToBookRatio': None,
+        'DividendYield': None,
+        'ReturnOnEquityTTM': None,
+        'ProfitMargin': None,
+        'EVToEBITDA': None,
+        'PriceToSalesRatioTTM': None,
+        'Beta': None,
+        'PEGRatio': None
+    }
+
+    # 1. Try Alpha Vantage first (for consistency with existing flow)
+    try:
+        # Rate limit: Wait if needed
+        alpha_vantage_limiter.wait_if_needed()
+        fd = FundamentalData(key=config.ALPHA_VANTAGE_API_KEY, output_format='json')
+        data, _ = fd.get_company_overview(ticker)
+        
+        if data:
+            info.update({
+                'summary': data.get('Description', info['summary']),
+                'sector': data.get('Sector', info['sector']),
+                'industry': data.get('Industry', info['industry']),
+                'marketCap': int(data.get('MarketCapitalization', 0)) if data.get('MarketCapitalization') and data.get('MarketCapitalization') != 'None' else None,
+                'forwardPE': safe_float(data.get('ForwardPE')),
+                'targetMeanPrice': safe_float(data.get('AnalystTargetPrice')),
+                'name': data.get('Name', ticker),
+                'exchange': data.get('Exchange', info['exchange']),
+                'currency': data.get('Currency', info['currency']),
+                'country': data.get('Country', info['country']),
+                '52WeekHigh': safe_float(data.get('52WeekHigh')),
+                '52WeekLow': safe_float(data.get('52WeekLow')),
+                'PERatio': safe_float(data.get('PERatio')),
+                'PriceToBookRatio': safe_float(data.get('PriceToBookRatio')),
+                'DividendYield': safe_float(data.get('DividendYield')),
+                'ReturnOnEquityTTM': safe_float(data.get('ReturnOnEquityTTM')),
+                'ProfitMargin': safe_float(data.get('ProfitMargin')),
+                'EVToEBITDA': safe_float(data.get('EVToEBITDA')),
+                'PriceToSalesRatioTTM': safe_float(data.get('PriceToSalesRatioTTM')),
+                'Beta': safe_float(data.get('Beta')),
+                'PEGRatio': safe_float(data.get('PEGRatio'))
+            })
+    except Exception as e:
+        print(f"Alpha Vantage fetch failed for {ticker}: {e}")
+
+    # 2. Enhance/Fallback with Yahoo Finance - REMOVED due to instability
+    # try:
+    #     yf_ticker = yf.Ticker(ticker)
+    #     yf_info = yf_ticker.info
+    #     ...
+    # except Exception as e:
+    #     print(f"Yahoo Finance fetch failed for {ticker}: {e}")
+        
+    return info
+
+def get_balance_sheet(ticker):
+    """
+    Fetches the latest annual balance sheet using Alpha Vantage.
+    Returns a dictionary of key balance sheet items.
     """
     try:
-        # Rate limit: Wait if needed to stay under 75 calls/minute
+        # Rate limit: Wait if needed
         alpha_vantage_limiter.wait_if_needed()
         
         fd = FundamentalData(key=config.ALPHA_VANTAGE_API_KEY, output_format='json')
+        bs, _ = fd.get_balance_sheet_annual(ticker)
         
-        # Get company overview
-        data, meta_data = fd.get_company_overview(ticker)
+        latest = None
+        if isinstance(bs, dict) and 'annualReports' in bs and bs.get('annualReports'):
+            latest = bs['annualReports'][0]
+        elif hasattr(bs, 'iloc') and not bs.empty: # Handle DataFrame
+            latest = bs.iloc[0].to_dict()
         
-        if not data:
-            return {
-                'summary': 'No summary available.',
-                'sector': 'Unknown',
-                'industry': 'Unknown',
-                'marketCap': None,
-                'forwardPE': None,
-                'targetMeanPrice': None,
-                'recommendationKey': 'Unknown'
-            }
-        
+        if not latest:
+            return None
+            
+        # Convert to dictionary with safe access and float conversion
+        def get_val(key):
+            val = latest.get(key)
+            return float(val) if val and val != 'None' else 0
+
         return {
-            'summary': data.get('Description', 'No summary available.'),
-            'sector': data.get('Sector', 'Unknown'),
-            'industry': data.get('Industry', 'Unknown'),
-            'marketCap': int(data.get('MarketCapitalization', 0)) if data.get('MarketCapitalization') and data.get('MarketCapitalization') != 'None' else None,
-            'forwardPE': safe_float(data.get('ForwardPE')),
-            'targetMeanPrice': safe_float(data.get('AnalystTargetPrice')),
-            'recommendationKey': 'Unknown',
-            'name': data.get('Name', ticker),
-            'exchange': data.get('Exchange', 'Unknown'),
-            'currency': data.get('Currency', 'USD'),
-            'country': data.get('Country', 'Unknown'),
-            # Valuation Metrics
-            'PERatio': safe_float(data.get('PERatio')),
-            'PriceToBookRatio': safe_float(data.get('PriceToBookRatio')),
-            'DividendYield': safe_float(data.get('DividendYield')),
-            'ReturnOnEquityTTM': safe_float(data.get('ReturnOnEquityTTM')),
-            'ProfitMargin': safe_float(data.get('ProfitMargin'))
+            "Total Assets": get_val("totalAssets"),
+            "Total Liabilities": get_val("totalLiabilities"),
+            "Total Equity": get_val("totalShareholderEquity"),
+            "Cash And Cash Equivalents": get_val("cashAndCashEquivalentsAtCarryingValue"),
+            "Total Debt": get_val("shortTermDebt") + get_val("longTermDebt"), # Approximation
+            "Working Capital": get_val("totalCurrentAssets") - get_val("totalCurrentLiabilities"),
+            "Date": latest.get("fiscalDateEnding", "N/A")
         }
         
     except Exception as e:
-        print(f"Error fetching company info for {ticker}: {e}")
+        print(f"Error fetching balance sheet for {ticker}: {e}")
+        return None
+
+def get_cash_flow(ticker):
+    """
+    Fetches the latest annual cash flow statement using Alpha Vantage.
+    Returns a dictionary of key cash flow items.
+    """
+    try:
+        # Rate limit: Wait if needed
+        alpha_vantage_limiter.wait_if_needed()
+        
+        fd = FundamentalData(key=config.ALPHA_VANTAGE_API_KEY, output_format='json')
+        cf, _ = fd.get_cash_flow_annual(ticker)
+        
+        latest = None
+        if isinstance(cf, dict) and 'annualReports' in cf and cf.get('annualReports'):
+            latest = cf['annualReports'][0]
+        elif hasattr(cf, 'iloc') and not cf.empty: # Handle DataFrame
+            latest = cf.iloc[0].to_dict()
+            
+        if not latest:
+            return None
+            
+        # Convert to dictionary with safe access and float conversion
+        def get_val(key):
+            val = latest.get(key)
+            return float(val) if val and val != 'None' else 0
+
         return {
-            'Summary': "Information not available.",
-            'Sector': "N/A",
-            'Industry': "N/A",
-            'Employees': "N/A",
-            'City': "N/A",
-            'State': "N/A",
-            'Country': "N/A",
-            'Website': "N/A"
+            "Operating Cash Flow": get_val("operatingCashflow"),
+            "Investing Cash Flow": get_val("cashflowFromInvestment"),
+            "Financing Cash Flow": get_val("cashflowFromFinancing"),
+            "Capital Expenditure": get_val("capitalExpenditures"),
+            "Free Cash Flow": get_val("operatingCashflow") - abs(get_val("capitalExpenditures")),
+            "Date": latest.get("fiscalDateEnding", "N/A")
         }
+        
+    except Exception as e:
+        print(f"Error fetching cash flow for {ticker}: {e}")
+        return None
 
 def get_quarterly_financials(ticker):
     """
@@ -144,11 +242,21 @@ def get_quarterly_financials(ticker):
             
         quarterly_data = []
         for report in data['quarterlyReports'][:8]: # Last 8 quarters
+            # Safe EPS parsing - use None for missing data instead of 0.0
+            eps_raw = report.get('reportedEPS')
+            if eps_raw and eps_raw != 'None':
+                try:
+                    eps = float(eps_raw)
+                except (ValueError, TypeError):
+                    eps = None
+            else:
+                eps = None
+            
             quarterly_data.append({
                 'fiscalDateEnding': report.get('fiscalDateEnding', 'N/A'),
                 'totalRevenue': float(report.get('totalRevenue', 0)),
                 'netIncome': float(report.get('netIncome', 0)),
-                'reportedEPS': float(report.get('reportedEPS', 0)) if report.get('reportedEPS') != 'None' else 0.0
+                'reportedEPS': eps
             })
             
         return quarterly_data
